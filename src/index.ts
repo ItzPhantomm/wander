@@ -8,3 +8,6 @@ export * from "./core/extractor.js";
 export * from "./providers/index.js";
 export * from "./hosting/config.js";
 export * from "./hosting/connector.js";
+export * from "./core/query.js";
+export * from "./core/suggestions.js";
+export * from "./core/history.js";

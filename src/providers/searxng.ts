@@ -2,11 +2,14 @@ import { BaseProvider } from "./base.js";
 import { SearchResult, SearchOptions, ProviderCapability } from "../core/types.js";
 import { safeFetch } from "../utils/http.js";
 import { sanitizeForTerminal } from "../core/security.js";
+import { logger } from "../utils/logger.js";
 
 const DEFAULT_SEARXNG_INSTANCES = [
   "https://searx.be",
   "https://priv.au",
-  "https://paulgo.io"
+  "https://paulgo.io",
+  "https://search.mdosch.de",
+  "https://searx.perennialte.ch"
 ];
 
 export class SearXNGProvider extends BaseProvider {
@@ -30,7 +33,7 @@ export class SearXNGProvider extends BaseProvider {
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     const limit = options.limit ?? 10;
-    const timeoutMs = options.timeoutMs ?? 6000;
+    const timeoutMs = options.timeoutMs ?? 5000;
 
     const instances = this.customInstance
       ? [this.customInstance, ...DEFAULT_SEARXNG_INSTANCES]
@@ -55,7 +58,21 @@ export class SearXNGProvider extends BaseProvider {
           continue;
         }
 
-        const data = await res.json();
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("json")) {
+          logger.debug(`SearXNG instance ${instance} returned non-JSON content-type: ${contentType}`);
+          continue;
+        }
+
+        const rawText = await res.text();
+        let data: any;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          logger.debug(`SearXNG instance ${instance} returned invalid JSON payload`);
+          continue;
+        }
+
         const rawResults = data?.results || [];
         const results: SearchResult[] = [];
 
@@ -79,6 +96,7 @@ export class SearXNGProvider extends BaseProvider {
         }
       } catch (err: any) {
         lastError = err;
+        logger.debug(`SearXNG instance ${instance} error: ${err.message}`);
       }
     }
 

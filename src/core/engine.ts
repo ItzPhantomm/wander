@@ -6,6 +6,8 @@ import {
   ResearchFinding,
   FetchedContent,
   ProviderStatus,
+  SearchResponse,
+  InstantAnswer,
   WanderConfig
 } from "./types.js";
 import { BaseProvider, createProviders } from "../providers/index.js";
@@ -14,6 +16,8 @@ import { rankAndFuse } from "./ranking.js";
 import { SearchCache } from "./cache.js";
 import { safeFetch } from "../utils/http.js";
 import { extractReadableContent } from "./extractor.js";
+import { parseQuerySyntax, detectInstantAnswer } from "./query.js";
+import { addHistoryEntry } from "./history.js";
 import { logger } from "../utils/logger.js";
 
 export class SearchEngine {
@@ -43,45 +47,79 @@ export class SearchEngine {
   }
 
   /**
-   * Performs parallel search across configured providers with deduplication and RRF ranking.
+   * Search returning results array directly (compatible with CLI & MCP).
    */
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
-    const cleanQuery = query.trim();
-    if (!cleanQuery) return [];
+    const res = await this.searchWithResponse(query, options);
+    return res.results;
+  }
+
+  /**
+   * Performs advanced search with query syntax parsing, instant answer calculation,
+   * parallel multi-provider queries, deduplication, and ranking.
+   */
+  async searchWithResponse(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
+    const startOverall = Date.now();
+    const cleanRaw = query.trim();
+    if (!cleanRaw) {
+      return { query: "", count: 0, results: [], latencyMs: 0 };
+    }
+
+    // Add query to search history
+    addHistoryEntry(cleanRaw);
+
+    // Parse search operators (site:, category:, -exclude, "exact phrase")
+    const parsed = parseQuerySyntax(cleanRaw);
+    const searchTarget = parsed.cleanQuery || cleanRaw;
+    const instantAnswer = detectInstantAnswer(cleanRaw);
 
     const limit = options.limit ?? this.config.search.maxResults;
-    const cacheKey = `search:${cleanQuery}:${options.providers?.sort().join(",") || "all"}:${limit}`;
+    const cacheKey = `search:${cleanRaw}:${options.providers?.sort().join(",") || "all"}:${limit}`;
 
     // Check cache
     if (options.useCache !== false) {
       const cached = this.cache.get<SearchResult[]>(cacheKey);
       if (cached && cached.length > 0) {
-        logger.debug(`Cache hit for query "${cleanQuery}"`);
-        return cached.slice(0, limit);
+        logger.debug(`Cache hit for query "${cleanRaw}"`);
+        return {
+          query: cleanRaw,
+          count: cached.length,
+          results: cached.slice(0, limit),
+          instantAnswer: instantAnswer || undefined,
+          latencyMs: Date.now() - startOverall
+        };
       }
     }
 
-    // Determine target providers
-    const targetProviderNames = options.providers && options.providers.length > 0
+    // Determine target providers based on category filters or options
+    let targetProviderNames = options.providers && options.providers.length > 0
       ? options.providers
       : this.config.search.defaultProviders;
+
+    if (parsed.categoryFilter) {
+      const filteredByCat = Array.from(this.providers.values())
+        .filter(p => p.category === parsed.categoryFilter)
+        .map(p => p.name);
+      if (filteredByCat.length > 0) {
+        targetProviderNames = filteredByCat;
+      }
+    }
 
     const activeProviders = targetProviderNames
       .map(name => this.providers.get(name.toLowerCase()))
       .filter((p): p is BaseProvider => p !== undefined);
 
     if (activeProviders.length === 0) {
-      logger.warn("No matching providers found, falling back to all available");
       activeProviders.push(...Array.from(this.providers.values()));
     }
 
     const timeoutMs = options.timeoutMs ?? this.config.search.timeoutMs;
 
-    // Dispatch parallel queries across providers with bounded timeouts
+    // Dispatch parallel queries across providers
     const providerTasks = activeProviders.map(async (provider) => {
       const start = Date.now();
       try {
-        const results = await provider.search(cleanQuery, {
+        const results = await provider.search(searchTarget, {
           ...options,
           limit,
           timeoutMs
@@ -92,7 +130,7 @@ export class SearchEngine {
           results
         };
       } catch (err: any) {
-        logger.warn(`Provider ${provider.name} failed: ${err.message}`);
+        logger.debug(`Provider ${provider.name} failed: ${err.message}`);
         return {
           providerName: provider.displayName,
           results: []
@@ -101,25 +139,56 @@ export class SearchEngine {
     });
 
     const providerResultSets = await Promise.all(providerTasks);
-
-    // Filter out empty result sets
     const validSets = providerResultSets.filter(s => s.results.length > 0);
 
     if (validSets.length === 0) {
-      logger.info(`All providers returned empty for "${cleanQuery}"`);
-      return [];
+      return {
+        query: cleanRaw,
+        count: 0,
+        results: [],
+        instantAnswer: instantAnswer || undefined,
+        latencyMs: Date.now() - startOverall
+      };
     }
 
     // Reciprocal Rank Fusion & Deduplication
-    const rankedResults = rankAndFuse(validSets, cleanQuery, { maxResults: limit });
-    const finalResults = deduplicateResults(rankedResults).slice(0, limit);
+    const rankedResults = rankAndFuse(validSets, searchTarget, { maxResults: limit * 2 });
+    let deduped = deduplicateResults(rankedResults);
+
+    // Apply operator filters
+    const siteToMatch = options.site || parsed.siteFilter;
+    if (siteToMatch) {
+      deduped = deduped.filter(r => r.url.toLowerCase().includes(siteToMatch.toLowerCase()));
+    }
+
+    if (parsed.excludeTerms.length > 0) {
+      deduped = deduped.filter(r => {
+        const text = (r.title + " " + r.snippet).toLowerCase();
+        return !parsed.excludeTerms.some(term => text.includes(term));
+      });
+    }
+
+    if (parsed.exactPhrases.length > 0) {
+      deduped = deduped.filter(r => {
+        const text = (r.title + " " + r.snippet).toLowerCase();
+        return parsed.exactPhrases.every(phrase => text.includes(phrase.toLowerCase()));
+      });
+    }
+
+    const finalResults = deduped.slice(0, limit);
 
     // Save to cache
     if (finalResults.length > 0 && options.useCache !== false) {
       this.cache.set(cacheKey, finalResults);
     }
 
-    return finalResults;
+    return {
+      query: cleanRaw,
+      count: finalResults.length,
+      results: finalResults,
+      instantAnswer: instantAnswer || undefined,
+      latencyMs: Date.now() - startOverall
+    };
   }
 
   /**
@@ -139,7 +208,6 @@ export class SearchEngine {
     const tasks = subQueries.map(q => this.search(q, { ...options, limit: 10 }));
     const allResults = await Promise.all(tasks);
 
-    // Flatten and rank
     const flattened = allResults.flat();
     const deduped = deduplicateResults(flattened);
     deduped.sort((a, b) => b.score - a.score);
@@ -172,7 +240,7 @@ export class SearchEngine {
     const html = await res.text();
     const extracted = extractReadableContent(html, url, { maxCharacters });
 
-    this.cache.set(cacheKey, extracted, 60 * 60 * 1000); // 1 hour fetch cache
+    this.cache.set(cacheKey, extracted, 60 * 60 * 1000);
     return extracted;
   }
 
@@ -184,7 +252,6 @@ export class SearchEngine {
     const query = topic.query;
     logger.info(`Starting research on "${query}"`);
 
-    // 1. Run parallel search
     const results = await this.parallelSearch(query, {
       limit: topic.maxSources ?? 8
     });
@@ -198,7 +265,6 @@ export class SearchEngine {
       };
     }
 
-    // 2. Fetch top 3-4 distinct informative sources
     const topResults = results.slice(0, Math.min(results.length, 4));
     const fetchedSources: { title: string; url: string; snippet: string; keyTakeaway?: string }[] = [];
     const insights: string[] = [];
@@ -206,7 +272,6 @@ export class SearchEngine {
     for (const item of topResults) {
       try {
         const page = await this.fetchPage(item.url, 15000);
-        // Extract key sentence from page
         const firstParagraph = page.plainText
           .split("\n")
           .map(s => s.trim())

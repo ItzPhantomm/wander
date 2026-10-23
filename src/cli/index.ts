@@ -8,6 +8,9 @@ import { runSetupCommand } from "./commands/setup.js";
 import { runDeployCommand } from "./commands/deploy.js";
 import { runMcpCommand } from "./commands/mcp.js";
 import { runConnectCommand } from "./commands/connect.js";
+import { runReadCommand } from "./commands/read.js";
+import { runSuggestCommand } from "./commands/suggest.js";
+import { runHistoryCommand } from "./commands/history.js";
 import { WanderTUI } from "../tui/app.js";
 import { SearchEngine } from "../core/engine.js";
 import { loadConfig, hasCompletedSetup } from "../hosting/config.js";
@@ -25,6 +28,9 @@ COMMANDS:
   parallel <query>     Run parallel multifaceted search across query variations
   research <query>     Autonomous deep research pipeline with citations
   fetch <url>          Safely retrieve a webpage and extract clean Markdown
+  read <url>           Interactive terminal distraction-free reader mode
+  suggest <prefix>     Instant autocomplete suggestions for search terms
+  history              Display or clear search query history (--clear)
   config               View or update hosting mode and engine configuration
   doctor               Run diagnostics, provider latency, and health checks
   setup                Run the first-launch interactive hosting setup wizard
@@ -35,6 +41,8 @@ COMMANDS:
 OPTIONS:
   -l, --limit <num>        Maximum number of results to return
   -p, --providers <list>   Comma-separated list of search providers to query
+  --site <domain>          Restrict results to a specific domain (e.g. --site github.com)
+  --md, --markdown         Output formatted Markdown summary
   --json                   Output machine-readable JSON (ideal for pipes & scripts)
   --no-cache               Bypass the local SQLite search cache
   --mode <local|cf>        Set hosting mode in 'config' (local or cloudflare)
@@ -81,6 +89,7 @@ export async function main() {
 
   // Parse common flags
   const json = args.includes("--json");
+  const markdown = args.includes("--md") || args.includes("--markdown");
   const noCache = args.includes("--no-cache");
 
   const getArgValue = (flags: string[]): string | undefined => {
@@ -96,10 +105,11 @@ export async function main() {
   const limitStr = getArgValue(["-l", "--limit"]);
   const limit = limitStr ? parseInt(limitStr, 10) : undefined;
   const providers = getArgValue(["-p", "--providers"]);
+  const site = getArgValue(["--site"]);
 
   // Extracts non-flag positional arguments excluding options that consume a value
   const extractQuery = (commandArgs: string[]): string => {
-    const valueFlags = new Set(["-l", "--limit", "-p", "--providers", "--max-chars", "--mode", "--worker-url", "--set"]);
+    const valueFlags = new Set(["-l", "--limit", "-p", "--providers", "--site", "--max-chars", "--mode", "--worker-url", "--set"]);
     const queryParts: string[] = [];
     for (let i = 0; i < commandArgs.length; i++) {
       const arg = commandArgs[i];
@@ -123,7 +133,7 @@ export async function main() {
         process.exitCode = 1;
         return;
       }
-      await runSearchCommand({ query, limit, providers, json, noCache });
+      await runSearchCommand({ query, limit, providers, site, json, markdown, noCache });
       break;
     }
 
@@ -159,6 +169,34 @@ export async function main() {
       const maxCharsStr = getArgValue(["--max-chars"]);
       const maxChars = maxCharsStr ? parseInt(maxCharsStr, 10) : undefined;
       await runFetchCommand({ url: targetUrl, maxChars, json });
+      break;
+    }
+
+    case "read": {
+      const targetUrl = extractQuery(args.slice(1)).split(" ")[0];
+      if (!targetUrl) {
+        console.error("Error: 'wander read' requires a URL. Example: wander read https://example.com");
+        process.exitCode = 1;
+        return;
+      }
+      await runReadCommand(targetUrl);
+      break;
+    }
+
+    case "suggest": {
+      const prefix = extractQuery(args.slice(1));
+      if (!prefix) {
+        console.error("Error: 'wander suggest' requires a search prefix. Example: wander suggest \"type\"");
+        process.exitCode = 1;
+        return;
+      }
+      await runSuggestCommand(prefix, json);
+      break;
+    }
+
+    case "history": {
+      const clear = args.includes("--clear");
+      runHistoryCommand(clear, json);
       break;
     }
 
@@ -201,7 +239,7 @@ export async function main() {
       // If the first argument does not start with dash, treat as direct search query!
       if (!first.startsWith("-")) {
         const query = extractQuery(args);
-        await runSearchCommand({ query, limit, providers, json, noCache });
+        await runSearchCommand({ query, limit, providers, site, json, markdown, noCache });
       } else {
         console.error(`Unknown option: ${first}`);
         process.stdout.write(HELP_TEXT.trim() + "\n");

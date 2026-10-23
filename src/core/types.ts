@@ -18,8 +18,24 @@ export interface SearchOptions {
   providers?: string[];
   freshness?: "day" | "week" | "month" | "year" | "all";
   categories?: ("general" | "tech" | "science" | "code")[];
+  site?: string;
   timeoutMs?: number;
   useCache?: boolean;
+}
+
+export interface InstantAnswer {
+  type: "calculation" | "conversion" | "definition";
+  title: string;
+  answer: string;
+  details?: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  count: number;
+  results: SearchResult[];
+  instantAnswer?: InstantAnswer;
+  latencyMs?: number;
 }
 
 export interface ParallelSearchOptions extends SearchOptions {
