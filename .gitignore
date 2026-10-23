@@ -1,0 +1,7 @@
+node_modules/
+dist/
+cloudflare/dist/
+.cache/
+*.log
+wander-results-*.json
+.DS_Store

@@ -1,0 +1,46 @@
+{
+  "name": "wander-search",
+  "version": "1.0.0",
+  "description": "Fast, advanced, completely free, and open-source search engine with interactive terminal UI, CLI, and MCP interface for AI agents.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "wander": "./bin/wander.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "cloudflare"
+  ],
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly",
+    "dev": "tsx src/cli/index.ts",
+    "test": "node --test --import tsx test/*.test.ts",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "search",
+    "search-engine",
+    "mcp",
+    "model-context-protocol",
+    "tui",
+    "cli",
+    "ai-agent",
+    "cloudflare-workers",
+    "open-source"
+  ],
+  "author": "Wander Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "cheerio": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
