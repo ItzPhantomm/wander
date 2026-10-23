@@ -33,6 +33,14 @@
   ],
   "author": "Wander Contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ItzPhantomm/wander.git"
+  },
+  "homepage": "https://github.com/ItzPhantomm/wander#readme",
+  "bugs": {
+    "url": "https://github.com/ItzPhantomm/wander/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "cheerio": "^1.1.2"

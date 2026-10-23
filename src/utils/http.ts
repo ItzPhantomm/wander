@@ -21,7 +21,7 @@ export interface SafeFetchResult {
   json: () => Promise<any>;
 }
 
-const DEFAULT_USER_AGENT = "Wander/1.0 (+https://github.com/wander-search/wander; open-source search engine)";
+const DEFAULT_USER_AGENT = "Wander/1.0 (+https://github.com/ItzPhantomm/wander; open-source search engine)";
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const DEFAULT_MAX_REDIRECTS = 5;

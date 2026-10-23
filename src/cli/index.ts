@@ -7,6 +7,7 @@ import { runDoctorCommand } from "./commands/doctor.js";
 import { runSetupCommand } from "./commands/setup.js";
 import { runDeployCommand } from "./commands/deploy.js";
 import { runMcpCommand } from "./commands/mcp.js";
+import { runConnectCommand } from "./commands/connect.js";
 import { WanderTUI } from "../tui/app.js";
 import { SearchEngine } from "../core/engine.js";
 import { loadConfig, hasCompletedSetup } from "../hosting/config.js";
@@ -29,6 +30,7 @@ COMMANDS:
   setup                Run the first-launch interactive hosting setup wizard
   deploy               Compile and deploy serverless backend to Cloudflare Workers
   mcp                  Launch stdio Model Context Protocol (MCP) server for AI agents
+  connect [harness]    Auto-connect Wander to AI harnesses (Antigravity, Claude, Cursor, Codex)
 
 OPTIONS:
   -l, --limit <num>        Maximum number of results to return
@@ -186,6 +188,12 @@ export async function main() {
 
     case "mcp": {
       await runMcpCommand();
+      break;
+    }
+
+    case "connect": {
+      const target = args.slice(1).find(a => !a.startsWith("-"));
+      await runConnectCommand({ target, json });
       break;
     }
 

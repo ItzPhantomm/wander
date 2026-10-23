@@ -1,6 +1,7 @@
 import readline from "node:readline/promises";
 import { loadConfig, saveConfig, hasCompletedSetup } from "./config.js";
 import { CloudflareManager, switchHosting } from "./cloudflare.js";
+import { HarnessConnector } from "./connector.js";
 import { WanderConfig } from "../core/types.js";
 import { logger } from "../utils/logger.js";
 
@@ -67,6 +68,10 @@ export async function runSetupWizard(force = false): Promise<WanderConfig> {
     saveConfig(updated);
     console.log("✓ Local hosting configured successfully!");
     console.log("✓ Configuration saved to ~/.config/wander/config.json\n");
+    console.log("> Connecting Wander MCP server to installed AI harnesses...");
+    const connector = new HarnessConnector();
+    await connector.connectAll();
+    console.log("✓ AI harnesses configured!\n");
     rl.close();
     return updated;
   }

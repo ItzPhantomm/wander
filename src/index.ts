@@ -7,3 +7,4 @@ export * from "./core/cache.js";
 export * from "./core/extractor.js";
 export * from "./providers/index.js";
 export * from "./hosting/config.js";
+export * from "./hosting/connector.js";

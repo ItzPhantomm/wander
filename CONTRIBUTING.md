@@ -12,7 +12,7 @@ Thank you for your interest in improving Wander! Wander is built on the philosop
 
 ### Setup
 ```bash
-git clone https://github.com/wander-search/wander.git
+git clone https://github.com/ItzPhantomm/wander.git
 cd wander
 npm install
 npm run build

@@ -23,7 +23,7 @@ export class WikipediaProvider extends BaseProvider {
     const res = await safeFetch(apiUrl, {
       timeoutMs,
       headers: {
-        "User-Agent": "WanderSearch/1.0 (+https://github.com/wander-search/wander)"
+        "User-Agent": "WanderSearch/1.0 (+https://github.com/ItzPhantomm/wander)"
       }
     });
 

@@ -28,7 +28,7 @@
 
 ```bash
 # Clone and link globally
-git clone https://github.com/wander-search/wander.git
+git clone https://github.com/ItzPhantomm/wander.git
 cd wander
 npm install
 npm run build
@@ -137,6 +137,19 @@ wander config
 # Update settings
 wander config --set search.maxResults=20
 wander config --set search.timeoutMs=8000
+```
+
+### 7. AI Harness Auto-Connector
+Automatically discover and connect Wander to installed AI harnesses (Google Antigravity, Claude Code, Cursor, Codex):
+```bash
+# Connect to all detected harnesses
+wander connect
+
+# Or connect to a specific harness
+wander connect antigravity
+wander connect claude
+wander connect cursor
+wander connect codex
 ```
 
 ---
