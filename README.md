@@ -32,7 +32,7 @@
 
 **Wander** is a lightning-fast, privacy-first, zero-subscription search engine built from the ground up for modern developers, terminal power-users, and autonomous AI harnesses (Claude Code, Antigravity, Cursor, Codex).
 
-It fuses search results from distributed free sources using **Reciprocal Rank Fusion (RRF)**, presents them in an interactive dual-pane TUI or scriptable CLI, and exposes a clean **Model Context Protocol (MCP)** stdio server so your AI tools can search the web without costly API bills.
+It fuses search results from distributed free sources using **Reciprocal Rank Fusion (RRF)**, presents them in an ultra-clean, spacious interactive TUI or scriptable CLI, and exposes a clean **Model Context Protocol (MCP)** stdio server so your AI tools can search the web without costly API bills.
 
 ---
 
@@ -42,7 +42,7 @@ It fuses search results from distributed free sources using **Reciprocal Rank Fu
 - 💻 **Dual Hosting Modes**:
   - **Local Mode**: Runs entirely in-process on your machine with offline-first SQLite result caching.
   - **Cloudflare Mode**: 1-click serverless edge deployment to Cloudflare Workers via Wrangler (100,000 reqs/day on free tier).
-- 🖥️ **Split-Pane Interactive TUI**: Terminal UI with live autocomplete suggestions, category tabs, dual-pane preview, full-screen reader mode (`[r]`), search history navigation (`[↑/↓]`), and instant clipboard copying (`[c]`).
+- 🖥️ **Spacious, Focused Terminal UI**: Elegant, distraction-free search interface with full-width cards, live type-ahead autocomplete, category tabs (`[1..4]` or `[t]`), full-screen distraction-free reader mode (`[r]`), search history navigation (`[↑/↓]`), and instant clipboard copying (`[c]`).
 - ⚡ **Advanced Query Operators**: Filter domains (`site:github.com`), categories (`category:code`), exact phrases (`"search terms"`), and excluded words (`-word`).
 - 🧮 **Instant Answers**: Built-in instant arithmetic evaluation (`25 * 4 + 10`) and metric/imperial unit conversions (`50 km to miles`, `100 F to C`, `75 kg to lbs`).
 - 🤖 **Universal AI Connector**: Auto-injects Wander into Google Antigravity, Claude Code, Cursor, and Codex with a single command (`wander connect`).
@@ -60,7 +60,7 @@ Wander solves this by orchestrating a resilient mesh of public sources, applying
 |---|:---:|:---:|:---:|:---:|
 | **Cost** | **Free (MIT)** | $20–$100+/mo | Pay-per-query | Free |
 | **API Keys Required** | **None** | Yes | Yes | None |
-| **Interactive Terminal TUI** | **Yes (Split-Pane + Reader)** | ❌ No | ❌ No | ❌ No |
+| **Interactive Terminal TUI** | **Yes (Full-Width + Reader)** | ❌ No | ❌ No | ❌ No |
 | **Offline-First SQLite Cache** | **Yes** | ❌ No (SaaS) | ❌ No (SaaS) | ❌ No |
 | **Multi-Provider Consensus (RRF)** | **Yes (7+ Engines)** | Single Backend | Single Backend | Single |
 | **Instant Answers & Math** | **Yes** | ❌ No | Partial | Partial |
@@ -98,40 +98,42 @@ wander doctor
 
 ## 🖥️ Interactive Terminal UI (TUI)
 
-Launch the dual-pane interactive search experience by running `wander` with no arguments:
+Launch the focused, spacious interactive search terminal by running `wander` with no arguments:
 
 ```bash
 wander
 ```
 
 ```
-┌─ Wander Search ─────────────────────────────────────────────────────────────┐
-│ Query: rust async patterns                                    [General (7)] │
-├─ Ranked Results ──────────────────┬─ Preview & Reader ──────────────────────┤
-│ > 1. Async in Rust - Official Doc │ # Asynchronous Programming in Rust      │
-│   2. Tokio - An asynchronous run..│                                         │
-│   3. Rust Concurrency Explained   │ An overview of async/await, poll-based  │
-│   4. Futures & Tasks in Rust 2024 │ execution, and executor runtimes...     │
-│   5. Async Book - The Rust Lang   │                                         │
-├───────────────────────────────────┴─────────────────────────────────────────┤
-│ [↑/↓] Navigate  [Enter] Open  [r] Read  [t] Category  [c] Copy  [q] Quit     │
-└─────────────────────────────────────────────────────────────────────────────┘
+ 🌐 WANDER  Open-Source Search for Humans & AI                        [LOCAL]  
+  Categories: [1 ALL]  [2 TECH]  [3 CODE]  [4 SCIENCE]  
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ › rust async patterns                                                  █ │
+  ╰──────────────────────────────────────────────────────────────────────────╯
+  ▶ 1. Async Programming in Rust - Official Docs  [DuckDuckGo] (score: 0.82)
+     https://rust-lang.github.io/async-book/
+     Asynchronous programming in Rust enables high-throughput concurrent I/O
+     without thread overhead using async/await and executor runtimes.
+     ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+    2. Tokio - An Asynchronous Runtime for the Rust Language  [GitHub]
+     https://github.com/tokio-rs/tokio
+     A runtime for writing reliable, asynchronous, and slim applications...
 ```
 
 ### Keyboard Shortcuts
 | Shortcut | Action |
 |---|---|
-| `[Enter]` | Open selected result in default browser (or execute search query) |
-| `[↑] / [↓]` | Navigate search query history (in search box) or results list |
-| `[Tab]` | Toggle focus between Search Input and Results List |
-| `[r]` | **Distraction-Free Reader Mode**: Read the full article directly in your terminal |
-| `[t]` | Cycle category filters (`General` → `Code` → `Tech` → `Science`) |
+| `[Enter]` | Open selected result in browser (or execute search query in search box) |
+| `[↑] / [↓]` | Navigate search query history (in search box) or browse search results |
+| `[Tab]` | Pick autocomplete suggestion, or move focus from Search Box to Results |
+| `[r]` / `[Space]` | **Distraction-Free Reader Mode**: Read full article text directly in terminal |
+| `[t]` | Cycle search category tabs (`All` → `Tech` → `Code` → `Science`) |
+| `[1] .. [4]` | Instant direct switch to Category Tab |
 | `[c]` | Copy selected URL to system clipboard |
 | `[e]` | Export current search results to `wander-results.json` |
 | `[m]` | Export current search results as Markdown summary |
-| `[p]` | Toggle preview pane on/off |
 | `[/]` or `[s]` | Quick-focus search input |
-| `[q]` or `[Esc]` | Exit Wander cleanly |
+| `[q]` or `[Esc]` | Exit Wander cleanly (or return from Reader Mode) |
 
 ---
 

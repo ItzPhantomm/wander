@@ -9,6 +9,24 @@ import { getHistoryEntries } from "../core/history.js";
 
 type TuiView = "search" | "reader";
 
+function wrapText(text: string, maxWidth: number): string[] {
+  if (maxWidth <= 10) return [text.slice(0, maxWidth)];
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const w of words) {
+    if (!w) continue;
+    if ((current + " " + w).trim().length > maxWidth) {
+      if (current) lines.push(current);
+      current = w;
+    } else {
+      current = current ? current + " " + w : w;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 export class WanderTUI {
   private engine: SearchEngine;
   private config: WanderConfig;
@@ -16,11 +34,10 @@ export class WanderTUI {
   private results: SearchResult[] = [];
   private selectedIndex = 0;
   private isSearching = false;
-  private statusMessage = "Type a query and press Enter";
+  private statusMessage = "Type a query and press Enter to search";
   private toastMessage = "";
   private toastTimer: any = null;
   private isSearchFocused = true;
-  private showPreview = true;
   private instantAnswer?: InstantAnswer;
   private suggestions: string[] = [];
   private selectedSuggestion = -1;
@@ -64,8 +81,12 @@ export class WanderTUI {
     const onKeypress = (str: string | undefined, key: readline.Key) => {
       if (!this.isRunning) return;
 
-      // Global Exit
-      if ((key.ctrl && key.name === "c") || (key.name === "escape" && this.viewMode === "search" && !this.isSearchFocused) || (str === "q" && this.viewMode === "search" && !this.isSearchFocused)) {
+      // Global Exit: Ctrl+C anytime, or q/Esc when not typing in search box
+      if (
+        (key.ctrl && key.name === "c") ||
+        (key.name === "escape" && this.viewMode === "search" && !this.isSearchFocused) ||
+        (str === "q" && this.viewMode === "search" && !this.isSearchFocused)
+      ) {
         this.cleanup();
         process.exit(0);
       }
@@ -138,6 +159,16 @@ export class WanderTUI {
       return;
     }
 
+    if (key.name === "escape") {
+      if (this.suggestions.length > 0) {
+        this.suggestions = [];
+        this.selectedSuggestion = -1;
+      } else if (this.results.length > 0) {
+        this.isSearchFocused = false;
+      }
+      return;
+    }
+
     if (key.name === "up") {
       if (this.historyList.length > 0) {
         this.historyIndex = Math.min(this.historyIndex + 1, this.historyList.length - 1);
@@ -147,7 +178,10 @@ export class WanderTUI {
     }
 
     if (key.name === "down") {
-      if (this.historyIndex > 0) {
+      if (this.suggestions.length > 0 && this.selectedSuggestion < this.suggestions.length - 1) {
+        this.selectedSuggestion++;
+        this.query = this.suggestions[this.selectedSuggestion];
+      } else if (this.historyIndex > 0) {
         this.historyIndex--;
         this.query = this.historyList[this.historyIndex];
       } else if (this.historyIndex === 0) {
@@ -194,30 +228,45 @@ export class WanderTUI {
     }
 
     if (key.name === "pageup") {
-      this.selectedIndex = Math.max(0, this.selectedIndex - 6);
+      this.selectedIndex = Math.max(0, this.selectedIndex - 5);
       return;
     }
 
     if (key.name === "pagedown") {
-      this.selectedIndex = Math.min(this.results.length - 1, this.selectedIndex + 6);
+      this.selectedIndex = Math.min(this.results.length - 1, this.selectedIndex + 5);
       return;
     }
 
-    if (str === "/" || str === "s") {
+    if (str === "/" || str === "s" || key.name === "escape") {
       this.isSearchFocused = true;
+      return;
+    }
+
+    // Direct category switching via numbers 1, 2, 3, 4
+    if (str === "1") {
+      this.setCategoryIndex(0);
+      return;
+    }
+    if (str === "2") {
+      this.setCategoryIndex(1);
+      return;
+    }
+    if (str === "3") {
+      this.setCategoryIndex(2);
+      return;
+    }
+    if (str === "4") {
+      this.setCategoryIndex(3);
       return;
     }
 
     if (str === "t") {
       // Cycle category filter
-      this.activeCategoryIndex = (this.activeCategoryIndex + 1) % this.categories.length;
-      const cat = this.categories[this.activeCategoryIndex];
-      this.showToast(`Category filter: ${cat.toUpperCase()}`);
-      if (this.query.trim()) this.executeSearch();
+      this.setCategoryIndex((this.activeCategoryIndex + 1) % this.categories.length);
       return;
     }
 
-    if (str === "r") {
+    if (str === "r" || str === " ") {
       // Open Reader Mode
       const selected = this.results[this.selectedIndex];
       if (selected) {
@@ -251,15 +300,17 @@ export class WanderTUI {
       this.exportMarkdown();
       return;
     }
+  }
 
-    if (str === "p") {
-      this.showPreview = !this.showPreview;
-      return;
-    }
+  private setCategoryIndex(index: number) {
+    this.activeCategoryIndex = index;
+    const cat = this.categories[this.activeCategoryIndex];
+    this.showToast(`Category filter: ${cat.toUpperCase()}`);
+    if (this.query.trim()) this.executeSearch();
   }
 
   private handleReaderInput(str: string | undefined, key: readline.Key) {
-    if (str === "q" || key.name === "escape" || key.name === "backspace") {
+    if (str === "q" || key.name === "escape" || key.name === "backspace" || str === "r") {
       this.viewMode = "search";
       return;
     }
@@ -270,21 +321,31 @@ export class WanderTUI {
     }
 
     if (key.name === "down" || str === "j") {
-      this.readerScroll = Math.min(Math.max(0, this.readerContent.length - 10), this.readerScroll + 1);
+      this.readerScroll = Math.min(Math.max(0, this.readerContent.length - 8), this.readerScroll + 1);
       return;
     }
 
-    if (key.name === "pageup") {
+    if (key.name === "pageup" || str === "b") {
       this.readerScroll = Math.max(0, this.readerScroll - 15);
       return;
     }
 
-    if (key.name === "pagedown" || str === " ") {
-      this.readerScroll = Math.min(Math.max(0, this.readerContent.length - 10), this.readerScroll + 15);
+    if (key.name === "pagedown" || str === " " || str === "f") {
+      this.readerScroll = Math.min(Math.max(0, this.readerContent.length - 8), this.readerScroll + 15);
       return;
     }
 
-    if (str === "o") {
+    if (str === "g" || key.name === "home") {
+      this.readerScroll = 0;
+      return;
+    }
+
+    if (str === "G" || key.name === "end") {
+      this.readerScroll = Math.max(0, this.readerContent.length - 15);
+      return;
+    }
+
+    if (str === "o" || key.name === "return") {
       this.openUrl(this.readerUrl);
       return;
     }
@@ -297,7 +358,7 @@ export class WanderTUI {
 
   private async executeSearch() {
     this.isSearching = true;
-    this.statusMessage = `Searching across providers...`;
+    this.statusMessage = `Searching across distributed engines...`;
     this.render();
 
     try {
@@ -306,7 +367,7 @@ export class WanderTUI {
 
       const res: SearchResponse = await this.engine.searchWithResponse(this.query, {
         limit: 25,
-        categories: categoriesOpt
+        categories: categoriesOpt,
       });
 
       this.results = res.results;
@@ -315,7 +376,7 @@ export class WanderTUI {
       this.isSearchFocused = false;
       this.suggestions = [];
       this.historyList = getHistoryEntries();
-      this.statusMessage = `Found ${res.count} results in ${res.latencyMs || 0}ms.`;
+      this.statusMessage = `Found ${res.count} results in ${res.latencyMs || 0}ms`;
     } catch (err: any) {
       this.statusMessage = `Search failed: ${err.message}`;
     } finally {
@@ -345,10 +406,14 @@ export class WanderTUI {
   }
 
   private openUrl(url: string) {
-    const cmd = process.platform === "darwin" ? "open" :
-                process.platform === "win32" ? "start" : "xdg-open";
+    const cmd =
+      process.platform === "darwin"
+        ? "open"
+        : process.platform === "win32"
+        ? "start"
+        : "xdg-open";
     exec(`${cmd} "${url}"`, () => {});
-    this.showToast(`Opened in browser: ${url.slice(0, 30)}...`);
+    this.showToast(`Opening browser: ${url.slice(0, 32)}...`);
   }
 
   private copyToClipboard(text: string) {
@@ -370,9 +435,9 @@ export class WanderTUI {
     try {
       const fileName = `wander-results-${Date.now()}.json`;
       fs.writeFileSync(fileName, JSON.stringify(this.results, null, 2), "utf-8");
-      this.showToast(`Saved to ${fileName}`);
+      this.showToast(`✔ Saved JSON: ${fileName}`);
     } catch (err: any) {
-      this.showToast(`Export failed: ${err.message}`);
+      this.showToast(`Export error: ${err.message}`);
     }
   }
 
@@ -384,9 +449,9 @@ export class WanderTUI {
         mdLines.push(`### ${i + 1}. [${r.title}](${r.url})\n**Source:** ${r.source} | **Score:** ${r.score}\n\n${r.snippet}\n`);
       });
       fs.writeFileSync(fileName, mdLines.join("\n"), "utf-8");
-      this.showToast(`Saved to ${fileName}`);
+      this.showToast(`✔ Saved Markdown: ${fileName}`);
     } catch (err: any) {
-      this.showToast(`Export failed: ${err.message}`);
+      this.showToast(`Export error: ${err.message}`);
     }
   }
 
@@ -401,6 +466,9 @@ export class WanderTUI {
     }
   }
 
+  // =========================================================================
+  // READER VIEW: Full-width, clean typography, distraction-free reading
+  // =========================================================================
   private renderReader(width: number, height: number) {
     const bold = "\x1b[1m";
     const dim = "\x1b[2m";
@@ -412,27 +480,36 @@ export class WanderTUI {
 
     let buffer = "\x1b[H";
 
-    // Reader Header
-    const titleBar = ` 📖 READER MODE: ${sanitizeForTerminal(this.readerTitle).slice(0, width - 25)} `;
+    // Reader Header Bar
+    const titleBar = ` 📖 READER: ${sanitizeForTerminal(this.readerTitle).slice(0, width - 20)} `;
     buffer += `${inverse}${bold}${titleBar.padEnd(width)}${reset}\n`;
-    buffer += `${dim}Source: ${green}${this.readerUrl.slice(0, width - 10)}${reset}\n`;
-    buffer += `${dim}${"═".repeat(width)}${reset}\n`;
+    buffer += `${dim} Source: ${green}${this.readerUrl.slice(0, width - 12)}${reset}\n`;
+    buffer += `${dim}${"─".repeat(width)}${reset}\n`;
 
     const bodyHeight = height - 5;
 
     if (this.isReaderLoading) {
-      buffer += `\n   ${yellow}⏳ Extracting clean readable content & stripping ads...${reset}\n\n`;
+      buffer += `\n   ${yellow}⏳ Extracting clean readable article and stripping page clutter...${reset}\n\n`;
     } else {
       const visibleLines = this.readerContent.slice(this.readerScroll, this.readerScroll + bodyHeight);
-      for (const line of visibleLines) {
+      for (const rawLine of visibleLines) {
+        const line = sanitizeForTerminal(rawLine);
         if (line.startsWith("# ")) {
-          buffer += `${bold}${cyan}${sanitizeForTerminal(line).slice(0, width)}${reset}\n`;
+          buffer += `\n${bold}${cyan}${line.slice(0, width - 2)}${reset}\n`;
         } else if (line.startsWith("## ")) {
-          buffer += `${bold}${green}${sanitizeForTerminal(line).slice(0, width)}${reset}\n`;
+          buffer += `\n${bold}${green}${line.slice(0, width - 2)}${reset}\n`;
+        } else if (line.startsWith("### ")) {
+          buffer += `${bold}${line.slice(0, width - 2)}${reset}\n`;
         } else if (line.startsWith("> ")) {
-          buffer += `${dim}${sanitizeForTerminal(line).slice(0, width)}${reset}\n`;
+          buffer += `  ${dim}│ ${line.slice(2, width - 6)}${reset}\n`;
+        } else if (line.trim().length === 0) {
+          buffer += "\n";
         } else {
-          buffer += `${sanitizeForTerminal(line).slice(0, width)}\n`;
+          // Soft wrap paragraphs
+          const wrapped = wrapText(line, width - 4);
+          for (const w of wrapped) {
+            buffer += `  ${w}\n`;
+          }
         }
       }
     }
@@ -442,162 +519,219 @@ export class WanderTUI {
       buffer += "\n".repeat(height - 1 - currentLines);
     }
 
-    // Reader Footer
+    // Reader Progress & Shortcuts
     const totalLines = this.readerContent.length;
-    const progress = totalLines > 0 ? Math.round(((this.readerScroll + bodyHeight) / totalLines) * 100) : 0;
-    const footerHelp = `[↑/↓/Space] Scroll  [o] Browser  [c] Copy  [q/Esc] Back to Search`;
-    const footerText = ` Progress: ${Math.min(100, progress)}% | Line ${this.readerScroll + 1}/${totalLines} `;
-    buffer += `\n${inverse}${footerText.padEnd(width - footerHelp.length)}${footerHelp}${reset}`;
+    const progress = totalLines > 0 ? Math.min(100, Math.round(((this.readerScroll + bodyHeight) / totalLines) * 100)) : 0;
+    const footerHelp = `[↑/↓/Space] Scroll  [o] Browser  [c] Copy URL  [q/Esc] Back `;
+    const progressBadge = ` [${progress}% • Line ${this.readerScroll + 1}/${totalLines}] `;
+    const leftPad = progressBadge;
+    const spacer = " ".repeat(Math.max(1, width - leftPad.length - footerHelp.length));
 
+    buffer += `\n${inverse}${leftPad}${spacer}${footerHelp}${reset}`;
     process.stdout.write(buffer);
   }
 
+  // =========================================================================
+  // SEARCH VIEW: Unified, Spacious, Elegant & Highly User-Friendly (No Dual Mode)
+  // =========================================================================
   private renderSearch(width: number, height: number) {
     const bold = "\x1b[1m";
     const dim = "\x1b[2m";
     const cyan = "\x1b[36m";
+    const brightCyan = "\x1b[96m";
     const green = "\x1b[32m";
     const yellow = "\x1b[33m";
     const magenta = "\x1b[35m";
+    const brightWhite = "\x1b[97m";
     const inverse = "\x1b[7m";
     const reset = "\x1b[0m";
 
     let buffer = "\x1b[H";
 
-    // App Header Bar
-    const modeBadge = `[Mode: ${this.config.hosting.mode.toUpperCase()}]`;
-    const catTabs = this.categories.map((c, i) =>
-      i === this.activeCategoryIndex ? `${inverse} ${c.toUpperCase()} ${reset}` : `${dim} ${c.toUpperCase()} ${reset}`
-    ).join(" ");
+    // 1. Top Brand Banner
+    const brand = ` 🌐 WANDER `;
+    const modeBadge = `[${this.config.hosting.mode.toUpperCase()}]`;
+    const tag = `Open-Source Search for Humans & AI`;
+    const rightInfo = `${modeBadge}  `;
+    const topBar = `${inverse}${bold}${brand}${reset} ${dim}${tag}${reset}`;
+    const topPadding = Math.max(1, width - brand.length - tag.length - rightInfo.length - 2);
+    buffer += `${topBar}${" ".repeat(topPadding)}${dim}${rightInfo}${reset}\n`;
 
-    const appBanner = `  🌐 WANDER SEARCH  ${modeBadge}  ${catTabs}`;
-    buffer += `${inverse}${bold}${appBanner.padEnd(width)}${reset}\n`;
+    // 2. Category Tabs
+    const catLabels = [
+      { key: "1", name: "ALL" },
+      { key: "2", name: "TECH" },
+      { key: "3", name: "CODE" },
+      { key: "4", name: "SCIENCE" },
+    ];
+    let tabLine = `  ${dim}Categories:${reset} `;
+    catLabels.forEach((c, idx) => {
+      const isActive = idx === this.activeCategoryIndex;
+      if (isActive) {
+        tabLine += `${inverse}${bold} ${c.key} ${c.name} ${reset}  `;
+      } else {
+        tabLine += `${dim}[${c.key} ${c.name}]${reset}  `;
+      }
+    });
+    buffer += `${tabLine}\n`;
 
-    // Search Query Box
-    const cursor = this.isSearchFocused ? "█" : "";
-    const prefix = this.isSearchFocused ? `${cyan}${bold}▶ Search:${reset} ` : `  ${dim}Search:${reset} `;
-    buffer += `\n${prefix}${this.query}${cyan}${cursor}${reset}\n`;
+    // 3. Search Query Input Box
+    const searchBorderColor = this.isSearchFocused ? brightCyan : dim;
+    const searchBoxWidth = width - 4;
+    const innerWidth = searchBoxWidth - 4;
+    
+    buffer += `  ${searchBorderColor}╭${"─".repeat(searchBoxWidth - 2)}╮${reset}\n`;
 
-    // Live Query Suggestions Bar
-    if (this.suggestions.length > 0 && this.isSearchFocused) {
-      const sugList = this.suggestions.map((s, idx) =>
-        idx === this.selectedSuggestion ? `${inverse} ${s} ${reset}` : `${dim}[${s}]${reset}`
-      ).join("  ");
-      buffer += `   ${dim}Suggestions:${reset} ${sugList}\n`;
+    let displayText = this.query;
+    if (displayText.length === 0 && this.isSearchFocused) {
+      displayText = `${dim}Type search query, math ("25 * 4"), or site:domain.com...${reset}`;
+    }
+    const cursor = this.isSearchFocused ? `${brightCyan}█${reset}` : "";
+    const prompt = this.isSearchFocused ? `${bold}${brightCyan} › ${reset}` : `   `;
+    
+    // Ensure display text fits inside the box
+    const cleanDisplay = sanitizeForTerminal(this.query);
+    const visibleQuery = cleanDisplay.length > innerWidth - 5
+      ? "..." + cleanDisplay.slice(-(innerWidth - 8))
+      : cleanDisplay;
+
+    if (this.query.length === 0 && this.isSearchFocused) {
+      buffer += `  ${searchBorderColor}│${reset}${prompt}${displayText}${cursor}${" ".repeat(Math.max(0, innerWidth - 48))}${searchBorderColor}│${reset}\n`;
     } else {
-      buffer += `${dim}${"─".repeat(width)}${reset}\n`;
+      const padRight = Math.max(0, innerWidth - visibleQuery.length - 2);
+      buffer += `  ${searchBorderColor}│${reset}${prompt}${bold}${brightWhite}${visibleQuery}${reset}${cursor}${" ".repeat(padRight)}${searchBorderColor}│${reset}\n`;
+    }
+    buffer += `  ${searchBorderColor}╰${"─".repeat(searchBoxWidth - 2)}╯${reset}\n`;
+
+    // 4. Autocomplete Suggestion Dropdown (if active)
+    let usedLines = 6;
+    if (this.suggestions.length > 0 && this.isSearchFocused) {
+      buffer += `    ${dim}Suggestions (Tab or ↓ to pick):${reset} `;
+      this.suggestions.forEach((sug, idx) => {
+        const isSel = idx === this.selectedSuggestion;
+        if (isSel) {
+          buffer += `${inverse}${bold} ${sug} ${reset} `;
+        } else {
+          buffer += `${cyan}[${sug}]${reset} `;
+        }
+      });
+      buffer += "\n";
+      usedLines++;
     }
 
-    // Instant Answer Knowledge Box if present
+    // 5. Instant Answer Card (if present)
     if (this.instantAnswer) {
-      buffer += `╭─ ${bold}${yellow}★ ${this.instantAnswer.title}${reset} ${"─".repeat(Math.max(0, width - this.instantAnswer.title.length - 8))}╮\n`;
-      buffer += `│  ${bold}${cyan}${this.instantAnswer.answer}${reset}`;
-      if (this.instantAnswer.details) buffer += `  ${dim}(${this.instantAnswer.details})${reset}`;
-      buffer += "\n╰" + "─".repeat(width - 2) + "╯\n";
+      const ansTitle = ` ★ ${this.instantAnswer.title} `;
+      buffer += `  ${yellow}╭─${bold}${ansTitle}${reset}${yellow}${"─".repeat(Math.max(0, width - ansTitle.length - 6))}╮${reset}\n`;
+      buffer += `  ${yellow}│${reset}  ${bold}${brightWhite}${this.instantAnswer.answer}${reset}`;
+      if (this.instantAnswer.details) {
+        buffer += `  ${dim}(${this.instantAnswer.details})${reset}`;
+      }
+      buffer += "\n";
+      buffer += `  ${yellow}╰${"─".repeat(width - 6)}╯${reset}\n`;
+      usedLines += 3;
     }
 
-    // Dual-Pane or Single-Pane Layout
-    const isSplit = width >= 90 && this.showPreview;
-    const leftWidth = isSplit ? Math.floor(width * 0.55) : width;
-    const rightWidth = isSplit ? width - leftWidth - 3 : 0;
-    const bodyHeight = height - (this.instantAnswer ? 12 : 9);
-
-    const pageSize = Math.max(3, Math.floor(bodyHeight / 3));
-    const startIdx = Math.floor(this.selectedIndex / pageSize) * pageSize;
-    const visibleResults = this.results.slice(startIdx, startIdx + pageSize);
+    // 6. Search Results Area (Single Pane, Spacious & Full-Width)
+    const availableHeight = height - usedLines - 2;
 
     if (this.isSearching) {
-      buffer += `\n   ${yellow}⏳ Fan-out query across distributed providers...${reset}\n\n`;
+      buffer += `\n   ${yellow}⏳ Fanning out queries across distributed search providers...${reset}\n`;
+      buffer += `   ${dim}Aggregating DuckDuckGo, Wikipedia, GitHub, Hacker News & arXiv...${reset}\n\n`;
     } else if (this.results.length === 0) {
       if (this.query.length === 0) {
-        buffer += `\n   ${dim}Type your query above and press Enter to search.${reset}\n`;
-        buffer += `   ${dim}Search Operators: site:xyz.com, category:tech, "exact phrase", -exclude${reset}\n`;
-        buffer += `   ${dim}Shortcuts: [t] Category Tab  [↑/↓] History  [r] Reader  [Enter] Open  [c] Copy${reset}\n\n`;
+        // Helpful, attractive initial welcome guide
+        buffer += `\n  ${dim}╭── QUICK GUIDE ─────────────────────────────────────────────────────────────╮${reset}\n`;
+        buffer += `  ${dim}│${reset}  ${bold}Search Syntax:${reset}                                                          ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${cyan}site:github.com${reset}         Restrict results to a specific domain        ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${cyan}category:code${reset}           Filter by engine category (web, code, tech)  ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${cyan}"exact phrase"${reset}          Enforce exact word sequence                  ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${cyan}-exclude${reset}                Exclude unwanted keywords                    ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${cyan}25 * 4 + 10${reset}             Instant math calculation                     ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${cyan}50 km to miles${reset}          Instant unit conversion                      ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}                                                                             ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}  ${bold}Shortcuts:${reset}                                                              ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${bold}[Enter]${reset} Search/Open       • ${bold}[r]${reset} Reader Mode      • ${bold}[t]${reset} Cycle Tabs        ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${bold}[c]${reset} Copy URL              • ${bold}[e]${reset} Export JSON      • ${bold}[m]${reset} Export Markdown   ${dim}│${reset}\n`;
+        buffer += `  ${dim}│${reset}    • ${bold}[↑/↓]${reset} Query History      • ${bold}[/]${reset} Focus Search     • ${bold}[q]${reset} Quit              ${dim}│${reset}\n`;
+        buffer += `  ${dim}╰────────────────────────────────────────────────────────────────────────────╯${reset}\n`;
       } else {
-        buffer += `\n   ${yellow}No ranked results found for "${this.query}". Try alternate keywords.${reset}\n\n`;
+        buffer += `\n   ${yellow}No ranked results found for "${this.query}".${reset}\n`;
+        buffer += `   ${dim}Try removing operators, using broader keywords, or switching categories.${reset}\n\n`;
       }
-    } else if (!isSplit) {
-      // Single pane rendering
-      visibleResults.forEach((item, relIdx) => {
-        const absIdx = startIdx + relIdx;
-        const isSelected = absIdx === this.selectedIndex && !this.isSearchFocused;
-        const selector = isSelected ? `${cyan}${bold}❯ ` : "  ";
-        const titleStyle = isSelected ? `${inverse}${bold}` : `${bold}${cyan}`;
-        const sourceBadge = `${magenta}[${item.source}]${reset}`;
-
-        buffer += `${selector}${titleStyle}${absIdx + 1}. ${sanitizeForTerminal(item.title).slice(0, width - 25)}${reset} ${sourceBadge}\n`;
-        buffer += `     ${green}${item.url.slice(0, width - 8)}${reset}\n`;
-        buffer += `     ${dim}${sanitizeForTerminal(item.snippet).slice(0, width - 8)}${reset}\n`;
-      });
     } else {
-      // Dual-pane split rendering
-      const leftLines: string[] = [];
+      // Calculate how many result cards fit comfortably
+      // Each card takes ~4 lines (Title+source, URL, Snippet, Divider)
+      const cardHeight = 4;
+      const pageSize = Math.max(2, Math.floor(availableHeight / cardHeight));
+      const pageIndex = Math.floor(this.selectedIndex / pageSize);
+      const startIdx = pageIndex * pageSize;
+      const visibleResults = this.results.slice(startIdx, startIdx + pageSize);
+
       visibleResults.forEach((item, relIdx) => {
         const absIdx = startIdx + relIdx;
         const isSelected = absIdx === this.selectedIndex && !this.isSearchFocused;
-        const selector = isSelected ? `${cyan}❯ ` : "  ";
-        const titleStyle = isSelected ? `${inverse}${bold}` : `${bold}${cyan}`;
+        
+        // Indicator
+        const indicator = isSelected ? `${bold}${brightCyan}▶ ` : `  `;
+        const numBadge = `${dim}${absIdx + 1}.${reset} `;
+        
+        // Title styling
+        const titleText = sanitizeForTerminal(item.title);
+        const maxTitleLen = Math.max(20, width - 35);
+        const trimmedTitle = titleText.length > maxTitleLen ? titleText.slice(0, maxTitleLen - 3) + "..." : titleText;
+        const titleFormatted = isSelected ? `${inverse}${bold} ${trimmedTitle} ${reset}` : `${bold}${brightWhite}${trimmedTitle}${reset}`;
+        
+        // Metadata badges
         const sourceBadge = `${magenta}[${item.source}]${reset}`;
+        const scoreBadge = `${dim}(score: ${item.score})${reset}`;
 
-        leftLines.push(`${selector}${titleStyle}${absIdx + 1}. ${sanitizeForTerminal(item.title).slice(0, leftWidth - 20)}${reset} ${sourceBadge}`);
-        leftLines.push(`   ${green}${item.url.slice(0, leftWidth - 6)}${reset}`);
-        leftLines.push(`   ${dim}${sanitizeForTerminal(item.snippet).slice(0, leftWidth - 6)}${reset}`);
-        leftLines.push("");
-      });
+        // Line 1: Indicator + Number + Title + Source
+        buffer += `${indicator}${numBadge}${titleFormatted}  ${sourceBadge} ${scoreBadge}\n`;
 
-      // Right pane: Selected Result Detail & Preview
-      const rightLines: string[] = [];
-      const selected = this.results[this.selectedIndex];
-      if (selected) {
-        rightLines.push(`${bold}${cyan}${sanitizeForTerminal(selected.title).slice(0, rightWidth)}${reset}`);
-        rightLines.push(`${dim}${"─".repeat(rightWidth)}${reset}`);
-        rightLines.push(`${green}${selected.url.slice(0, rightWidth)}${reset}`);
-        rightLines.push(`${magenta}Source:${reset} ${selected.source}  ${yellow}Score:${reset} ${selected.score}`);
-        if (selected.publishedDate) rightLines.push(`${dim}Date: ${selected.publishedDate}${reset}`);
-        if (selected.author) rightLines.push(`${dim}Author: ${selected.author}${reset}`);
-        rightLines.push("");
-        rightLines.push(`${bold}Snippet:${reset}`);
+        // Line 2: URL
+        const maxUrlLen = Math.max(30, width - 10);
+        const urlClean = item.url.length > maxUrlLen ? item.url.slice(0, maxUrlLen - 3) + "..." : item.url;
+        buffer += `     ${green}${urlClean}${reset}\n`;
 
-        // Word-wrap snippet for right pane
-        const words = sanitizeForTerminal(selected.snippet).split(" ");
-        let line = "";
-        for (const w of words) {
-          if ((line + " " + w).length > rightWidth) {
-            rightLines.push(line);
-            line = w;
-          } else {
-            line = line ? line + " " + w : w;
-          }
+        // Line 3: Snippet (Full-width clean wrap, 1-2 lines)
+        const maxSnippetLen = width - 10;
+        const snippetClean = sanitizeForTerminal(item.snippet);
+        const wrappedSnippet = wrapText(snippetClean, maxSnippetLen);
+        const snippetToShow = wrappedSnippet.slice(0, 2);
+        for (const snipLine of snippetToShow) {
+          buffer += `     ${dim}${snipLine}${reset}\n`;
         }
-        if (line) rightLines.push(line);
 
-        rightLines.push("");
-        rightLines.push(`${dim}[r] Reader Mode  [Enter] Open Link  [c] Copy URL${reset}`);
-      }
-
-      // Combine columns with vertical divider
-      const maxRows = Math.max(leftLines.length, rightLines.length);
-      for (let r = 0; r < maxRows; r++) {
-        const left = (leftLines[r] || "").padEnd(leftWidth);
-        const right = rightLines[r] || "";
-        buffer += `${left} ${dim}│${reset} ${right}\n`;
-      }
+        // Line 4: Divider
+        if (relIdx < visibleResults.length - 1) {
+          buffer += `     ${dim}${"┄".repeat(Math.min(width - 10, 72))}${reset}\n`;
+        }
+      });
     }
 
-    // Fill remaining screen lines
+    // Fill blank lines up to screen height
     const currentLines = buffer.split("\n").length;
     if (currentLines < height - 1) {
       buffer += "\n".repeat(height - 1 - currentLines);
     }
 
-    // Bottom Navigation Bar & Toast
-    const toastDisplay = this.toastMessage ? `${yellow}${bold} ${this.toastMessage} ${reset} ` : "";
+    // 7. Status & Bottom Navigation Bar
+    const totalResults = this.results.length;
+    let positionText = "";
+    if (totalResults > 0 && !this.isSearchFocused) {
+      positionText = `Result ${this.selectedIndex + 1}/${totalResults} | `;
+    }
+
+    const toastDisplay = this.toastMessage ? `${bold}${yellow} ✔ ${this.toastMessage} ${reset}` : "";
     const navShortcuts = this.isSearchFocused
-      ? `[Enter] Search  [Tab] Suggest  [↑/↓] History  [Ctrl+C] Exit`
-      : `[↑/↓] Select  [Enter] Open  [r] Reader  [t] Category  [c] Copy  [e] JSON  [m] MD  [q] Quit`;
+      ? `[Enter] Search  [Tab] Autocomplete  [↑/↓] History  [Ctrl+C] Exit`
+      : `[Enter] Open  [r] Reader  [t] Category  [c] Copy  [e] JSON  [m] MD  [/] Search  [q] Quit`;
 
-    buffer += `\n${inverse} ${this.statusMessage.slice(0, 35).padEnd(35)} ${toastDisplay}${navShortcuts.padStart(width - 38 - toastDisplay.length)} ${reset}`;
+    const leftStatus = ` ${positionText}${this.statusMessage} `;
+    const barPadding = Math.max(1, width - leftStatus.length - navShortcuts.length - (this.toastMessage ? this.toastMessage.length + 6 : 0));
 
+    buffer += `\n${inverse}${leftStatus}${toastDisplay}${" ".repeat(barPadding)}${navShortcuts} ${reset}`;
     process.stdout.write(buffer);
   }
 }
