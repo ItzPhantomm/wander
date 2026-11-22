@@ -1,0 +1,21 @@
+name: Feature Request
+description: Propose a new search provider, operator, or MCP enhancement
+labels: ["enhancement", "proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: Share your ideas for new capabilities or integrations in Wander!
+  - type: textarea
+    id: feature
+    attributes:
+      label: Proposed Feature
+      description: Describe what you would like to see added.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Motivation & Agent/Developer Use Case
+      description: Why is this valuable for developers or AI agents?
+    validations:
+      required: true

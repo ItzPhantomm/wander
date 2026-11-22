@@ -1,0 +1,32 @@
+name: Bug Report
+description: Create a report to help us improve Wander
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report an issue in Wander!
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Provide steps or query that triggered the bug.
+      placeholder: |
+        1. Run 'wander search "..."' or call MCP tool 'wander_search'
+        2. Notice unexpected behavior
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment Info
+      description: OS version, Node.js version, client (Claude Desktop, CLI, Cursor).
+      placeholder: "e.g. Linux x86_64, Node v20.18.0, Claude Desktop v0.7"
+    validations:
+      required: true
